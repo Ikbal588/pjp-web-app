@@ -19,7 +19,7 @@
         
         /* Main */
         #main-content { flex-grow: 1; padding: 40px; overflow-y: auto; position: relative; }
-        .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
         
         .admin-btn { position: absolute; top: 20px; right: 20px; background: #95a5a6; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; }
         .hidden { display: none; }
@@ -32,9 +32,11 @@
         .submit-btn { width: 100%; background: var(--accent); color: white; border: none; padding: 18px; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 30px; }
 
         /* Admin Table */
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
         th, td { border: 1px solid #eee; padding: 12px; text-align: left; }
+        th { background: #f8f9fa; }
         .deviation-row { background-color: #fff5f5; color: var(--error); font-weight: bold; }
+        .plan-cell { color: #666; font-size: 0.85em; }
     </style>
 </head>
 <body>
@@ -65,15 +67,12 @@
         <div id="bulkEntryForm" class="hidden">
             <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
             <p>Select all outlets visited today (leave empty if no visit):</p>
-            
-            <div id="rowsContainer">
-                </div>
-
+            <div id="rowsContainer"></div>
             <button class="submit-btn" onclick="submitAllVisits()">Save All Visits</button>
         </div>
     </div>
 
-    <div id="adminSection" class="container hidden" style="max-width: 1000px;">
+    <div id="adminSection" class="container hidden">
         <h1>Admin Dashboard</h1>
         <div style="display: flex; gap: 15px; margin-bottom: 20px;">
             <button onclick="downloadExcel()" style="background: #3498db; color:white; padding:10px 20px; border:none; border-radius:4px; cursor:pointer;">Download Excel</button>
@@ -82,7 +81,13 @@
         <h3 id="devCountDisplay" style="color: var(--error);"></h3>
         <table>
             <thead>
-                <tr><th>TL Name</th><th>Date</th><th>Visited Outlet</th><th>Result</th></tr>
+                <tr>
+                    <th>TL Name</th>
+                    <th>Date</th>
+                    <th>Planned Outlet(s)</th>
+                    <th>Visited Outlet</th>
+                    <th>Result</th>
+                </tr>
             </thead>
             <tbody id="adminTableBody"></tbody>
         </table>
@@ -90,7 +95,7 @@
 </div>
 
 <script>
-    // --- 1. CONFIGURATION (PASTE YOUR KEYS HERE) ---
+    // --- 1. CONFIGURATION ---
     const SB_URL = 'https://rtodwltrkammqzrpufds.supabase.co'; 
     const SB_KEY = 'sb_publishable_BIlXBBrujH3VtyvGy_XPlQ_CZl7GXx7';
     const sb = supabase.createClient(SB_URL, SB_KEY);
@@ -102,17 +107,14 @@
     // --- 2. INITIALIZE ---
     async function init() {
         try {
-            // Get TL Names
             const { data: tls } = await sb.from('pjp_master').select('tl_name');
-            const uniqueNames = [...new Set(tls.map(t => t.tl_name))];
+            const uniqueNames = [...new Set(tls.map(t => t.tl_name))].sort();
             const tlSelect = document.getElementById('tlName');
             tlSelect.innerHTML = '<option value="">-- Select Name --</option>';
             uniqueNames.forEach(n => tlSelect.innerHTML += `<option value="${n}">${n}</option>`);
 
-            // Get Stores
             const { data: stores } = await sb.from('pjp_master').select('store_name, location');
             masterStoreList = stores;
-            
             generateRows();
         } catch (err) { console.error("Init Error:", err); }
     }
@@ -120,37 +122,26 @@
     function generateRows() {
         const container = document.getElementById('rowsContainer');
         container.innerHTML = "";
+        const uniqueStores = [...new Map(masterStoreList.map(item => [item.store_name, item])).values()];
+        
         for (let i = 1; i <= 10; i++) {
             const row = document.createElement('div');
             row.className = 'visit-row';
-            row.innerHTML = `
-                <div class="visit-num">${i}</div>
-                <select id="v_${i}" class="store-select">
-                    <option value="">-- Select Outlet --</option>
-                </select>
-            `;
+            row.innerHTML = `<div class="visit-num">${i}</div><select id="v_${i}" class="store-select"><option value="">-- Select Outlet --</option></select>`;
             container.appendChild(row);
 
             const selectEl = document.getElementById(`v_${i}`);
-            masterStoreList.forEach(s => {
+            uniqueStores.forEach(s => {
                 const opt = document.createElement('option');
                 opt.value = s.store_name;
                 opt.text = `${s.store_name} | ${s.location}`;
                 selectEl.appendChild(opt);
             });
 
-            const choice = new Choices(selectEl, {
-                searchEnabled: true,
-                searchResultLimit: 1000,
-                renderChoiceLimit: 1000,
-                itemSelectText: '',
-                placeholder: true
-            });
-            choiceInstances.push(choice);
+            choiceInstances.push(new Choices(selectEl, { searchEnabled: true, itemSelectText: '', placeholder: true }));
         }
     }
 
-    // --- 3. LOAD PLAN ---
     async function loadPlan() {
         const name = document.getElementById('tlName').value;
         const date = document.getElementById('visitDate').value;
@@ -174,7 +165,6 @@
         }
     }
 
-    // --- 4. SUBMIT ALL ---
     async function submitAllVisits() {
         const name = document.getElementById('tlName').value;
         const date = document.getElementById('visitDate').value;
@@ -194,7 +184,6 @@
         }
 
         if(entriesToSave.length === 0) return alert("Please select at least one visit.");
-
         const { error } = await sb.from('daily_reports').insert(entriesToSave);
 
         if(!error) {
@@ -205,7 +194,6 @@
         }
     }
 
-    // --- 5. ADMIN ---
     function adminLogin() {
         if(prompt("Admin Password:") === "admin123") {
             document.getElementById('tlSection').classList.add('hidden');
@@ -215,27 +203,44 @@
     }
 
     async function fetchAdminData() {
-        const { data } = await sb.from('daily_reports').select('*').order('visit_date', { ascending: false });
+        // Fetch actual reports
+        const { data: reports } = await sb.from('daily_reports').select('*').order('visit_date', { ascending: false });
+        // Fetch all plans to correlate
+        const { data: allPlans } = await sb.from('pjp_master').select('tl_name, visit_date, store_name');
+
         const tbody = document.getElementById('adminTableBody');
         tbody.innerHTML = "";
         let devs = 0;
 
-        data.forEach(r => {
+        reports.forEach(r => {
             if(r.is_deviation) devs++;
+            
+            // Find what stores were planned for this specific person on this specific date
+            const plannedForThisDay = allPlans
+                .filter(p => p.tl_name === r.tl_name && p.visit_date === r.visit_date)
+                .map(p => p.store_name)
+                .join(", ");
+
             const tr = document.createElement('tr');
             if(r.is_deviation) tr.className = "deviation-row";
-            tr.innerHTML = `<td>${r.tl_name}</td><td>${r.visit_date}</td><td>${r.actual_store}</td><td>${r.is_deviation ? '❌ Deviation' : '✅ Match'}</td>`;
+            tr.innerHTML = `
+                <td>${r.tl_name}</td>
+                <td>${r.visit_date}</td>
+                <td class="plan-cell">${plannedForThisDay || '<i>No plan found</i>'}</td>
+                <td>${r.actual_store}</td>
+                <td>${r.is_deviation ? '❌ Deviation' : '✅ Match'}</td>
+            `;
             tbody.appendChild(tr);
         });
         document.getElementById('devCountDisplay').innerText = `Current Deviations: ${devs}`;
-        window.reportsData = data;
+        window.reportsData = reports;
     }
 
     function downloadExcel() {
         const ws = XLSX.utils.json_to_sheet(window.reportsData);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Reports");
-        XLSX.writeFile(wb, "PJP_Report_Jan2026.xlsx");
+        XLSX.writeFile(wb, "PJP_Report_2026.xlsx");
     }
 
     init();
