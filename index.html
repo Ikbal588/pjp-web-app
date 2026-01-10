@@ -13,18 +13,20 @@
         :root { --primary: #1a252f; --accent: #27ae60; --bg: #f4f7f6; --error: #e74c3c; }
         body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; height: 100vh; background: var(--bg); }
         #sidebar { width: 320px; background: var(--primary); color: white; padding: 25px; overflow-y: auto; box-shadow: 2px 0 5px rgba(0,0,0,0.1); }
-        .plan-card { background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid var(--accent); }
+        .plan-card { background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid var(--accent); }
+        .slot-tag { font-size: 0.75em; color: #27ae60; text-transform: uppercase; font-weight: bold; }
         #main-content { flex-grow: 1; padding: 40px; overflow-y: auto; position: relative; }
-        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        .container { max-width: 1100px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
         .admin-btn { position: absolute; top: 20px; right: 20px; background: #95a5a6; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; }
         .hidden { display: none; }
         .visit-row { display: grid; grid-template-columns: 40px 1fr; gap: 15px; align-items: center; padding: 10px; border-bottom: 1px solid #eee; }
         .visit-num { font-weight: bold; color: #7f8c8d; }
         select, input[type="date"] { padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 15px; }
         .submit-btn { width: 100%; background: var(--accent); color: white; border: none; padding: 18px; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 30px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 0.9em; }
         th, td { border: 1px solid #eee; padding: 12px; text-align: left; }
         .deviation-row { background-color: #fff5f5; color: var(--error); font-weight: bold; }
+        .plan-info-cell { color: #7f8c8d; font-style: italic; }
     </style>
 </head>
 <body>
@@ -51,6 +53,7 @@
             </div>
         </div>
         <div id="bulkEntryForm" class="hidden">
+            <p>Select all outlets visited today in order:</p>
             <div id="rowsContainer"></div>
             <button class="submit-btn" onclick="submitAllVisits()">Save All Visits</button>
         </div>
@@ -68,6 +71,7 @@
                 <tr>
                     <th>TL Name</th>
                     <th>Date</th>
+                    <th>Visit Slot</th>
                     <th>Planned Store</th>
                     <th>Actual Visit</th>
                     <th>Result</th>
@@ -84,7 +88,7 @@
     const sb = supabase.createClient(SB_URL, SB_KEY);
 
     let masterStoreList = [];
-    let plannedStoresList = []; // Will store objects: {name, location}
+    let plannedStoresList = []; // Array of objects from pjp_master
     let choiceInstances = [];
 
     async function init() {
@@ -112,7 +116,7 @@
             const selectEl = document.getElementById(`v_${i}`);
             masterStoreList.forEach(s => {
                 const opt = document.createElement('option');
-                opt.value = `${s.store_name} | ${s.location}`;
+                opt.value = `${s.store_name} | ${s.location}`; // Match based on both for precision
                 opt.text = `${s.store_name} | ${s.location}`;
                 selectEl.appendChild(opt);
             });
@@ -126,14 +130,18 @@
         if(!name || !date) return;
 
         const { data } = await sb.from('pjp_master').select('*').eq('tl_name', name).eq('visit_date', date);
-        plannedStoresList = data; // Keep full object for index matching
+        plannedStoresList = data; // Keep full records for indexed comparison
         
         const listDiv = document.getElementById('planList');
         listDiv.innerHTML = "";
         if(data.length > 0) {
             document.getElementById('planMeta').innerText = `Plan for ${name}:`;
-            data.forEach((p, index) => {
-                listDiv.innerHTML += `<div class="plan-card"><b>Slot ${index + 1}: ${p.store_name}</b><br><small>${p.location}</small></div>`;
+            data.forEach((p, idx) => {
+                listDiv.innerHTML += `
+                    <div class="plan-card">
+                        <div class="slot-tag">Slot ${idx + 1}</div>
+                        <b>${p.store_name}</b><br><small>${p.location}</small>
+                    </div>`;
             });
             document.getElementById('bulkEntryForm').classList.remove('hidden');
         } else {
@@ -150,9 +158,11 @@
         for(let i = 1; i <= 10; i++) {
             const val = document.getElementById(`v_${i}`).value;
             if(val && val !== "") {
-                // Match by index (i-1)
-                const plannedForThisSlot = plannedStoresList[i-1];
+                // One-to-one mapping logic:
+                // Check if the i-th box matches the i-th planned store
+                const plannedForThisSlot = plannedStoresList[i-1]; 
                 const plannedStr = plannedForThisSlot ? `${plannedForThisSlot.store_name} | ${plannedForThisSlot.location}` : "Unplanned";
+                
                 const isDev = (val !== plannedStr);
 
                 entriesToSave.push({
@@ -160,13 +170,15 @@
                     visit_date: date,
                     actual_store: val,
                     is_deviation: isDev,
-                    visit_order: i // Save the order to match in Admin later
+                    visit_order: i // IMPORTANT: Tracks which slot was used
                 });
             }
         }
-        if(entriesToSave.length === 0) return alert("Select a visit.");
+
+        if(entriesToSave.length === 0) return alert("Select at least one visit.");
         const { error } = await sb.from('daily_reports').insert(entriesToSave);
-        if(!error) { alert("Saved!"); location.reload(); }
+        if(!error) { alert("Visits saved!"); location.reload(); }
+        else { alert("Error: " + error.message); }
     }
 
     function adminLogin() {
@@ -179,32 +191,39 @@
 
     async function fetchAdminData() {
         const { data: reports } = await sb.from('daily_reports').select('*').order('visit_date', { ascending: false });
-        const { data: plans } = await sb.from('pjp_master').select('*');
+        const { data: allPlans } = await sb.from('pjp_master').select('*');
 
         const tbody = document.getElementById('adminTableBody');
         tbody.innerHTML = "";
         let devs = 0;
 
         reports.forEach(r => {
-            // Find all plans for this TL on this date
-            const tlPlans = plans.filter(p => p.tl_name === r.tl_name && p.visit_date === r.visit_date);
-            // Get the specific store meant for this visit order (1st, 2nd, etc)
-            const specificPlan = tlPlans[r.visit_order - 1]; 
-            const planDisplay = specificPlan ? `${specificPlan.store_name} | ${specificPlan.location}` : "No Plan";
+            // Find the specific plan record for this user, date, and SLOT order
+            const specificPlan = allPlans.find(p => 
+                p.tl_name === r.tl_name && 
+                p.visit_date === r.visit_date &&
+                // We assume the plan order in pjp_master matches the slot 1, 2, 3...
+                // This logic identifies the i-th store planned for that specific TL
+                allPlans.filter(p2 => p2.tl_name === r.tl_name && p2.visit_date === r.visit_date).indexOf(p) === (r.visit_order - 1)
+            );
+
+            const plannedDisplay = specificPlan ? `${specificPlan.store_name} | ${specificPlan.location}` : "Unplanned Slot";
 
             if(r.is_deviation) devs++;
             const tr = document.createElement('tr');
             if(r.is_deviation) tr.className = "deviation-row";
+            
             tr.innerHTML = `
                 <td>${r.tl_name}</td>
                 <td>${r.visit_date}</td>
-                <td>${planDisplay}</td>
+                <td>Slot ${r.visit_order}</td>
+                <td class="plan-info-cell">${plannedDisplay}</td>
                 <td>${r.actual_store}</td>
                 <td>${r.is_deviation ? '❌ Deviation' : '✅ Match'}</td>
             `;
             tbody.appendChild(tr);
         });
-        document.getElementById('devCountDisplay').innerText = `Current Deviations: ${devs}`;
+        document.getElementById('devCountDisplay').innerText = `Total Deviations Found: ${devs}`;
         window.reportsData = reports;
     }
 
@@ -212,8 +231,9 @@
         const ws = XLSX.utils.json_to_sheet(window.reportsData);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Reports");
-        XLSX.writeFile(wb, "PJP_Report.xlsx");
+        XLSX.writeFile(wb, "PJP_Visit_Report.xlsx");
     }
+
     init();
 </script>
 </body>
