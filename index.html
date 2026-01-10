@@ -24,10 +24,14 @@
         .admin-btn { position: absolute; top: 10px; right: 10px; background: #95a5a6; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; z-index: 100; }
         .hidden { display: none; }
         
-        .visit-row { display: grid; grid-template-columns: 35px 1fr; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid #eee; }
-        .visit-num { font-weight: bold; color: #7f8c8d; text-align: center; }
+        /* Visit Row adjustments for Manual Entry */
+        .visit-row { display: grid; grid-template-columns: 35px 1fr; gap: 10px; align-items: start; padding: 15px 0; border-bottom: 1px solid #eee; }
+        .visit-num { font-weight: bold; color: #7f8c8d; padding-top: 12px; text-align: center; }
+        .entry-container { display: flex; flex-direction: column; gap: 5px; }
+        .manual-toggle { font-size: 11px; color: #3498db; cursor: pointer; text-decoration: underline; width: fit-content; }
         
-        select, input[type="date"] { padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; width: 100%; box-sizing: border-box; }
+        select, input[type="date"], .manual-input { padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; width: 100%; box-sizing: border-box; }
+        .manual-input { background-color: #fff9e6; border-color: #f1c40f; }
         .submit-btn { width: 100%; background: var(--accent); color: white; border: none; padding: 18px; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 20px; }
 
         /* Admin Controls */
@@ -57,7 +61,7 @@
 
     <div id="tlSection" class="container">
         <h1>Visit Reporting</h1>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;" class="filter-bar">
+        <div class="filter-bar">
             <div>
                 <label><b>TL Name:</b></label>
                 <select id="tlName" onchange="loadPlan()"></select>
@@ -76,7 +80,6 @@
 
     <div id="adminSection" class="container hidden">
         <h1>Admin Dashboard</h1>
-        
         <div class="filter-bar">
             <div>
                 <label>Filter by TL:</label>
@@ -87,25 +90,15 @@
                 <input type="date" id="filterDate" onchange="applyFilters()">
             </div>
         </div>
-
         <div style="display: flex; gap: 10px; margin-bottom: 15px;">
             <button onclick="downloadExcel()" style="background: #3498db; color:white; padding:12px; border:none; border-radius:6px; cursor:pointer; flex:2;">Download Filtered Excel</button>
             <button onclick="location.reload()" style="background: #95a5a6; color:white; padding:12px; border:none; border-radius:6px; cursor:pointer; flex:1;">Logout</button>
         </div>
-
         <h3 id="devCountDisplay" style="color: var(--error); margin: 5px 0;"></h3>
-        
         <div class="table-wrapper">
-            <table>
+            <table id="adminTable">
                 <thead>
-                    <tr>
-                        <th>TL Name</th>
-                        <th>Date</th>
-                        <th>Slot</th>
-                        <th>Planned</th>
-                        <th>Actual</th>
-                        <th>Status</th>
-                    </tr>
+                    <tr><th>TL Name</th><th>Date</th><th>Slot</th><th>Planned</th><th>Actual</th><th>Status</th></tr>
                 </thead>
                 <tbody id="adminTableBody"></tbody>
             </table>
@@ -120,15 +113,13 @@
 
     let masterStoreList = [];
     let currentPlannedObjects = [];
-    let allReports = []; // Master data for filtering
+    let allReports = [];
     let allPlans = [];
 
     async function init() {
         try {
             const { data: tls } = await sb.from('pjp_master').select('tl_name');
             const uniqueNames = [...new Set(tls.map(t => t.tl_name))];
-            
-            // Populate both TL selects
             const fillSelect = (id) => {
                 const el = document.getElementById(id);
                 el.innerHTML = '<option value="">-- All --</option>';
@@ -149,8 +140,20 @@
         for (let i = 1; i <= 10; i++) {
             const row = document.createElement('div');
             row.className = 'visit-row';
-            row.innerHTML = `<div class="visit-num">${i}</div><select id="v_${i}"><option value="">-- Select Outlet --</option></select>`;
+            row.innerHTML = `
+                <div class="visit-num">${i}</div>
+                <div class="entry-container" id="container_${i}">
+                    <div id="wrapper_select_${i}">
+                        <select id="v_${i}" class="store-select">
+                            <option value="">-- Select Outlet --</option>
+                        </select>
+                    </div>
+                    <input type="text" id="manual_v_${i}" class="manual-input hidden" placeholder="Enter Store Name & Location manually...">
+                    <span class="manual-toggle" id="toggle_${i}" onclick="toggleManual(${i})">Store not listed? Enter manually</span>
+                </div>
+            `;
             container.appendChild(row);
+
             const selectEl = document.getElementById(`v_${i}`);
             masterStoreList.forEach(s => {
                 const opt = document.createElement('option');
@@ -162,14 +165,31 @@
         }
     }
 
+    function toggleManual(id) {
+        const selectWrap = document.getElementById(`wrapper_select_${id}`);
+        const manualInput = document.getElementById(`manual_v_${id}`);
+        const toggleBtn = document.getElementById(`toggle_${id}`);
+
+        if (manualInput.classList.contains('hidden')) {
+            manualInput.classList.remove('hidden');
+            selectWrap.classList.add('hidden');
+            toggleBtn.innerText = "Switch back to list";
+            toggleBtn.style.color = "#e74c3c";
+        } else {
+            manualInput.classList.add('hidden');
+            selectWrap.classList.remove('hidden');
+            toggleBtn.innerText = "Store not listed? Enter manually";
+            toggleBtn.style.color = "#3498db";
+            manualInput.value = ""; // Clear manual if switched back
+        }
+    }
+
     async function loadPlan() {
         const name = document.getElementById('tlName').value;
         const date = document.getElementById('visitDate').value;
         if(!name || !date) return;
-
         const { data } = await sb.from('pjp_master').select('*').eq('tl_name', name).eq('visit_date', date);
         currentPlannedObjects = data;
-        
         const listDiv = document.getElementById('planList');
         listDiv.innerHTML = data.length > 0 ? "" : "<p>No plan found.</p>";
         data.forEach((p, idx) => {
@@ -184,17 +204,28 @@
         const entries = [];
 
         for(let i = 1; i <= 10; i++) {
-            const val = document.getElementById(`v_${i}`).value;
-            if(val) {
+            const selectVal = document.getElementById(`v_${i}`).value;
+            const manualVal = document.getElementById(`manual_v_${i}`).value;
+            // Use manual value if it's visible and not empty, otherwise use select value
+            const finalVal = (!document.getElementById(`manual_v_${i}`).classList.contains('hidden') && manualVal) ? manualVal : selectVal;
+
+            if(finalVal) {
                 const plan = currentPlannedObjects[i-1];
                 const planStr = plan ? `${plan.store_name} | ${plan.location}` : "No Plan";
-                entries.push({ tl_name: name, visit_date: date, actual_store: val, is_deviation: (val !== planStr), visit_order: i });
+                entries.push({ 
+                    tl_name: name, 
+                    visit_date: date, 
+                    actual_store: finalVal, 
+                    is_deviation: (finalVal !== planStr), 
+                    visit_order: i 
+                });
             }
         }
 
-        if(entries.length === 0) return alert("Select at least one visit.");
+        if(entries.length === 0) return alert("Please report at least one visit.");
         const { error } = await sb.from('daily_reports').insert(entries);
-        if(!error) { alert("Saved!"); location.reload(); }
+        if(!error) { alert("Report saved successfully!"); location.reload(); }
+        else { alert("Error: " + error.message); }
     }
 
     async function adminLogin() {
@@ -211,7 +242,6 @@
     function applyFilters() {
         const tl = document.getElementById('filterTL').value;
         const date = document.getElementById('filterDate').value;
-        
         const filtered = allReports.filter(r => (!tl || r.tl_name === tl) && (!date || r.visit_date === date));
         renderAdminTable(filtered);
     }
@@ -221,29 +251,26 @@
         tbody.innerHTML = "";
         let devs = 0;
         window.currentExport = [];
-
         data.forEach(r => {
             const dayPlans = allPlans.filter(p => p.tl_name === r.tl_name && p.visit_date === r.visit_date);
             const specificPlan = dayPlans[r.visit_order - 1]; 
             const planText = specificPlan ? `${specificPlan.store_name} | ${specificPlan.location}` : "Unplanned";
-
             if(r.is_deviation) devs++;
             const tr = document.createElement('tr');
             if(r.is_deviation) tr.className = "deviation-row";
             tr.innerHTML = `<td>${r.tl_name}</td><td>${r.visit_date}</td><td>${r.visit_order}</td><td>${planText}</td><td>${r.actual_store}</td><td>${r.is_deviation ? '❌' : '✅'}</td>`;
             tbody.appendChild(tr);
-
             window.currentExport.push({ "TL": r.tl_name, "Date": r.visit_date, "Slot": r.visit_order, "Planned": planText, "Actual": r.actual_store, "Result": r.is_deviation ? "Deviation" : "Match" });
         });
-        document.getElementById('devCountDisplay').innerText = `Results: ${data.length} | Deviations: ${devs}`;
+        document.getElementById('devCountDisplay').innerText = `Total Records: ${data.length} | Deviations: ${devs}`;
     }
 
     function downloadExcel() {
-        if(!window.currentExport || window.currentExport.length === 0) return alert("No data.");
+        if(!window.currentExport || window.currentExport.length === 0) return alert("No data to export.");
         const ws = XLSX.utils.json_to_sheet(window.currentExport);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Filtered Report");
-        XLSX.writeFile(wb, `PJP_Admin_Report.xlsx`);
+        XLSX.utils.book_append_sheet(wb, ws, "Report");
+        XLSX.writeFile(wb, `PJP_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
     }
 
     init();
