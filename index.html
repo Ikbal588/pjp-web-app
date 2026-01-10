@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PJP Reporting System</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; height: 100vh; }
+        #sidebar { width: 25%; background: #2c3e50; color: white; padding: 20px; }
+        #main-content { width: 75%; padding: 30px; position: relative; }
+        .admin-btn { position: absolute; top: 10px; right: 10px; padding: 8px; cursor: pointer; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .deviation-row { background-color: #ffdce0; color: #af0000; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>PJP Plan</h2>
+    <div id="planDisplay">Select Date/Name to view...</div>
+</div>
+
+<div id="main-content">
+    <button class="admin-btn" onclick="adminLogin()">Admin Login</button>
+
+    <div id="tlSection">
+        <h1>Field Visit Entry</h1>
+        <select id="tlName" onchange="loadPlan()">
+            <option value="">Select Your Name</option>
+            <option>AAKASH KUMAR</option>
+            </select>
+        <input type="date" id="visitDate" onchange="loadPlan()">
+        
+        <div style="margin-top: 20px;">
+            <label>Select Visited Store:</label>
+            <select id="storeDropdown"></select>
+            <button onclick="submitVisit()" style="background: #27ae60; color: white; padding: 10px; border: none; margin-top:10px;">Submit Visit</button>
+        </div>
+    </div>
+
+    <div id="adminSection" class="hidden">
+        <h1>Admin Dashboard - Deviations</h1>
+        <button onclick="downloadExcel()" style="background: #2980b9; color: white; padding: 10px; border: none;">Download Excel Report</button>
+        <button onclick="location.reload()" style="background: #7f8c8d; color: white; padding: 10px; border: none;">Back to Entry</button>
+        
+        <table id="deviationTable">
+            <thead>
+                <tr>
+                    <th>TL Name</th>
+                    <th>Date</th>
+                    <th>Visited Store</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="adminTableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // 1. CONFIGURATION (Put your keys here)
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let storeChoices;
+    let currentPlannedStores = [];
+
+    // 2. INITIALIZE SEARCHABLE DROPDOWN
+    async function init() {
+        const { data } = await supabase.from('pjp_master').select('store_name, location');
+        const select = document.getElementById('storeDropdown');
+        data.forEach(item => {
+            let opt = document.createElement('option');
+            opt.value = item.store_name;
+            opt.text = item.store_name + " (" + item.location + ")";
+            select.appendChild(opt);
+        });
+        storeChoices = new Choices(select, { searchEnabled: true });
+    }
+
+    // 3. LOAD PJP ON LEFT SIDE
+    async function loadPlan() {
+        const name = document.getElementById('tlName').value;
+        const date = document.getElementById('visitDate').value;
+        if(!name || !date) return;
+
+        const { data } = await supabase.from('pjp_master').select('*').eq('tl_name', name).eq('visit_date', date);
+        currentPlannedStores = data.map(d => d.store_name);
+        
+        let html = "<ul>";
+        data.forEach(d => html += `<li><b>${d.store_name}</b><br><small>${d.location}</small></li>`);
+        document.getElementById('planDisplay').innerHTML = html + "</ul>";
+    }
+
+    // 4. SUBMIT AND CHECK DEVIATION
+    async function submitVisit() {
+        const name = document.getElementById('tlName').value;
+        const date = document.getElementById('visitDate').value;
+        const actual = document.getElementById('storeDropdown').value;
+
+        const isDeviation = !currentPlannedStores.includes(actual);
+
+        await supabase.from('daily_reports').insert([
+            { tl_name: name, visit_date: date, actual_store: actual, is_deviation: isDeviation }
+        ]);
+
+        alert(isDeviation ? "Report Submitted (Deviation Noted)" : "Report Submitted (Matching Plan)");
+    }
+
+    // 5. ADMIN LOGIN & DASHBOARD
+    function adminLogin() {
+        const pass = prompt("Enter Admin Password:");
+        if(pass === "admin123") { // Set your password here
+            document.getElementById('tlSection').classList.add('hidden');
+            document.getElementById('adminSection').classList.remove('hidden');
+            loadAdminData();
+        }
+    }
+
+    async function loadAdminData() {
+        const { data } = await supabase.from('daily_reports').select('*').order('visit_date', { ascending: false });
+        const tbody = document.getElementById('adminTableBody');
+        tbody.innerHTML = "";
+
+        data.forEach(row => {
+            const tr = document.createElement('tr');
+            if(row.is_deviation) tr.className = "deviation-row";
+            tr.innerHTML = `<td>${row.tl_name}</td><td>${row.visit_date}</td><td>${row.actual_store}</td><td>${row.is_deviation ? 'DEVIATION' : 'OK'}</td>`;
+            tbody.appendChild(tr);
+        });
+        window.fullReportData = data;
+    }
+
+    // 6. EXCEL DOWNLOAD
+    function downloadExcel() {
+        const ws = XLSX.utils.json_to_sheet(window.fullReportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Deviations");
+        XLSX.writeFile(wb, "PJP_Deviation_Report.xlsx");
+    }
+
+    init();
+</script>
+</body>
+</html>
