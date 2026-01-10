@@ -1,148 +1,218 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>PJP Reporting System</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PJP Report System 2026</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
     <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    
     <style>
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; height: 100vh; }
-        #sidebar { width: 25%; background: #2c3e50; color: white; padding: 20px; }
-        #main-content { width: 75%; padding: 30px; position: relative; }
-        .admin-btn { position: absolute; top: 10px; right: 10px; padding: 8px; cursor: pointer; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        .deviation-row { background-color: #ffdce0; color: #af0000; }
+        :root { --primary: #1a252f; --accent: #27ae60; --bg: #f4f7f6; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; height: 100vh; background: var(--bg); }
+        
+        /* Sidebar Styles */
+        #sidebar { width: 320px; background: var(--primary); color: white; padding: 25px; overflow-y: auto; box-shadow: 2px 0 5px rgba(0,0,0,0.1); }
+        .plan-card { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid var(--accent); }
+        
+        /* Main Content Styles */
+        #main-content { flex-grow: 1; padding: 40px; overflow-y: auto; position: relative; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        
+        .admin-btn { position: absolute; top: 20px; right: 20px; background: #95a5a6; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; }
         .hidden { display: none; }
+        
+        /* Form Elements */
+        select, input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
+        button.submit-btn { width: 100%; background: var(--accent); color: white; border: none; padding: 15px; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        button.submit-btn:hover { background: #219150; }
+
+        /* Admin Table */
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+        th, td { border: 1px solid #eee; padding: 12px; text-align: left; }
+        th { background: #f8f9fa; color: #333; }
+        .deviation-row { background-color: #fff5f5; color: #e74c3c; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
-    <h2>PJP Plan</h2>
-    <div id="planDisplay">Select Date/Name to view...</div>
+    <h2 style="margin-top:0">PJP Plan View</h2>
+    <p id="planMeta" style="color: #bdc3c7; font-size: 0.9em;">Select TL and Date to view plan...</p>
+    <div id="planList"></div>
 </div>
 
 <div id="main-content">
     <button class="admin-btn" onclick="adminLogin()">Admin Login</button>
 
-    <div id="tlSection">
-        <h1>Field Visit Entry</h1>
-        <select id="tlName" onchange="loadPlan()">
-            <option value="">Select Your Name</option>
-            <option>AAKASH KUMAR</option>
-            </select>
+    <div id="tlSection" class="container">
+        <h1 style="margin-top:0; color: #2c3e50;">Visit Reporting</h1>
+        
+        <label>Select Your Name:</label>
+        <select id="tlName" onchange="loadPlan()"></select>
+        
+        <label>Select Date:</label>
         <input type="date" id="visitDate" onchange="loadPlan()">
         
-        <div style="margin-top: 20px;">
-            <label>Select Visited Store:</label>
-            <select id="storeDropdown"></select>
-            <button onclick="submitVisit()" style="background: #27ae60; color: white; padding: 10px; border: none; margin-top:10px;">Submit Visit</button>
+        <div id="entryForm" class="hidden">
+            <hr style="margin: 25px 0; border: 0; border-top: 1px solid #eee;">
+            <label><b>Search Visited Outlet:</b></label>
+            <div style="margin-top:10px;">
+                <select id="storeDropdown"></select>
+            </div>
+            <button class="submit-btn" onclick="submitVisit()">Submit Daily Visit</button>
         </div>
     </div>
 
-    <div id="adminSection" class="hidden">
-        <h1>Admin Dashboard - Deviations</h1>
-        <button onclick="downloadExcel()" style="background: #2980b9; color: white; padding: 10px; border: none;">Download Excel Report</button>
-        <button onclick="location.reload()" style="background: #7f8c8d; color: white; padding: 10px; border: none;">Back to Entry</button>
+    <div id="adminSection" class="container hidden" style="max-width: 1000px;">
+        <h1 style="color: #2c3e50;">Admin Dashboard</h1>
+        <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+            <button onclick="downloadExcel()" style="background: #3498db; padding: 10px 20px; color:white; border:none; border-radius:4px; cursor:pointer;">Download Excel Report</button>
+            <button onclick="location.reload()" style="background: #95a5a6; padding: 10px 20px; color:white; border:none; border-radius:4px; cursor:pointer;">Logout</button>
+        </div>
+        <h3 id="devCountDisplay" style="color: #e74c3c;"></h3>
         
-        <table id="deviationTable">
-            <thead>
-                <tr>
-                    <th>TL Name</th>
-                    <th>Date</th>
-                    <th>Visited Store</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody id="adminTableBody"></tbody>
-        </table>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>TL Name</th>
+                        <th>Date</th>
+                        <th>Visited Outlet</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="adminTableBody"></tbody>
+            </table>
+        </div>
     </div>
 </div>
 
 <script>
-    // 1. CONFIGURATION (Put your keys here)
-    const SUPABASE_URL = 'https://rtodwltrkammqzrpufds.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_BIlXBBrujH3VtyvGy_XPlQ_CZl7GXx7';
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // REPLACE THESE WITH YOUR ACTUAL SUPABASE KEYS
+    const SB_URL = 'https://rtodwltrkammqzrpufds.supabase.co'; 
+    const SB_KEY = 'sb_publishable_BIlXBBrujH3VtyvGy_XPlQ_CZl7GXx7';
+    const sb = supabase.createClient(SB_URL, SB_KEY);
 
-    let storeChoices;
-    let currentPlannedStores = [];
+    let storeSearch;
+    let plannedStores = [];
 
-    // 2. INITIALIZE SEARCHABLE DROPDOWN
+    // Initialize App
     async function init() {
-        const { data } = await supabase.from('pjp_master').select('store_name, location');
-        const select = document.getElementById('storeDropdown');
-        data.forEach(item => {
-            let opt = document.createElement('option');
-            opt.value = item.store_name;
-            opt.text = item.store_name + " (" + item.location + ")";
-            select.appendChild(opt);
-        });
-        storeChoices = new Choices(select, { searchEnabled: true });
+        try {
+            // 1. Get TL Names
+            const { data: tls } = await sb.from('pjp_master').select('tl_name');
+            const uniqueNames = [...new Set(tls.map(t => t.tl_name))];
+            const tlSelect = document.getElementById('tlName');
+            tlSelect.innerHTML = '<option value="">-- Click to Select --</option>';
+            uniqueNames.forEach(n => tlSelect.innerHTML += `<option value="${n}">${n}</option>`);
+
+            // 2. Get All Stores for Dropdown
+            const { data: stores } = await sb.from('pjp_master').select('store_name, location');
+            const storeSelect = document.getElementById('storeDropdown');
+            stores.forEach(s => {
+                let opt = document.createElement('option');
+                opt.value = s.store_name;
+                opt.text = `${s.store_name} | ${s.location}`;
+                storeSelect.appendChild(opt);
+            });
+            
+            storeSearch = new Choices(storeSelect, {
+                searchEnabled: true,
+                placeholderValue: 'Start typing store name...',
+                itemSelectText: ''
+            });
+        } catch (err) {
+            console.error("Initialization Error:", err);
+        }
     }
 
-    // 3. LOAD PJP ON LEFT SIDE
+    // Load PJP for Left Sidebar
     async function loadPlan() {
         const name = document.getElementById('tlName').value;
         const date = document.getElementById('visitDate').value;
         if(!name || !date) return;
 
-        const { data } = await supabase.from('pjp_master').select('*').eq('tl_name', name).eq('visit_date', date);
-        currentPlannedStores = data.map(d => d.store_name);
+        const { data } = await sb.from('pjp_master').select('*').eq('tl_name', name).eq('visit_date', date);
+        plannedStores = data.map(d => d.store_name);
         
-        let html = "<ul>";
-        data.forEach(d => html += `<li><b>${d.store_name}</b><br><small>${d.location}</small></li>`);
-        document.getElementById('planDisplay').innerHTML = html + "</ul>";
+        const listDiv = document.getElementById('planList');
+        const meta = document.getElementById('planMeta');
+        listDiv.innerHTML = "";
+        
+        if(data.length > 0) {
+            meta.innerText = `Plan for ${name} on ${date}:`;
+            data.forEach(p => {
+                listDiv.innerHTML += `<div class="plan-card"><b>${p.store_name}</b><br><small>${p.location}</small></div>`;
+            });
+            document.getElementById('entryForm').classList.remove('hidden');
+        } else {
+            meta.innerText = "No plan found for this selection.";
+            document.getElementById('entryForm').classList.add('hidden');
+        }
     }
 
-    // 4. SUBMIT AND CHECK DEVIATION
+    // Submit Report
     async function submitVisit() {
         const name = document.getElementById('tlName').value;
         const date = document.getElementById('visitDate').value;
         const actual = document.getElementById('storeDropdown').value;
+        
+        if(!actual) return alert("Please select a store first");
 
-        const isDeviation = !currentPlannedStores.includes(actual);
+        // Deviation Check
+        const isDev = !plannedStores.includes(actual);
 
-        await supabase.from('daily_reports').insert([
-            { tl_name: name, visit_date: date, actual_store: actual, is_deviation: isDeviation }
-        ]);
+        const { error } = await sb.from('daily_reports').insert([{
+            tl_name: name,
+            visit_date: date,
+            actual_store: actual,
+            is_deviation: isDev
+        }]);
 
-        alert(isDeviation ? "Report Submitted (Deviation Noted)" : "Report Submitted (Matching Plan)");
-    }
-
-    // 5. ADMIN LOGIN & DASHBOARD
-    function adminLogin() {
-        const pass = prompt("Enter Admin Password:");
-        if(pass === "admin123") { // Set your password here
-            document.getElementById('tlSection').classList.add('hidden');
-            document.getElementById('adminSection').classList.remove('hidden');
-            loadAdminData();
+        if(!error) {
+            alert(isDev ? "⚠️ REPORTED: This visit is a DEVIATION from your plan." : "✅ SUCCESS: Visit matches plan.");
+            location.reload(); // Refresh to clear form
+        } else {
+            alert("Error: " + error.message);
         }
     }
 
-    async function loadAdminData() {
-        const { data } = await supabase.from('daily_reports').select('*').order('visit_date', { ascending: false });
-        const tbody = document.getElementById('adminTableBody');
-        tbody.innerHTML = "";
-
-        data.forEach(row => {
-            const tr = document.createElement('tr');
-            if(row.is_deviation) tr.className = "deviation-row";
-            tr.innerHTML = `<td>${row.tl_name}</td><td>${row.visit_date}</td><td>${row.actual_store}</td><td>${row.is_deviation ? 'DEVIATION' : 'OK'}</td>`;
-            tbody.appendChild(tr);
-        });
-        window.fullReportData = data;
+    // Admin Dashboard Logic
+    function adminLogin() {
+        const pass = prompt("Admin Password:");
+        if(pass === "admin123") {
+            document.getElementById('tlSection').classList.add('hidden');
+            document.getElementById('adminSection').classList.remove('hidden');
+            fetchAdminData();
+        }
     }
 
-    // 6. EXCEL DOWNLOAD
+    async function fetchAdminData() {
+        const { data } = await sb.from('daily_reports').select('*').order('visit_date', { ascending: false });
+        const tbody = document.getElementById('adminTableBody');
+        tbody.innerHTML = "";
+        let devs = 0;
+
+        data.forEach(r => {
+            if(r.is_deviation) devs++;
+            const tr = document.createElement('tr');
+            if(r.is_deviation) tr.className = "deviation-row";
+            tr.innerHTML = `<td>${r.tl_name}</td><td>${r.visit_date}</td><td>${r.actual_store}</td><td>${r.is_deviation ? '❌ DEVIATION' : '✅ MATCH'}</td>`;
+            tbody.appendChild(tr);
+        });
+        
+        document.getElementById('devCountDisplay').innerText = `Total Deviations Recorded: ${devs}`;
+        window.reportsForExport = data;
+    }
+
     function downloadExcel() {
-        const ws = XLSX.utils.json_to_sheet(window.fullReportData);
+        const ws = XLSX.utils.json_to_sheet(window.reportsForExport);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Deviations");
-        XLSX.writeFile(wb, "PJP_Deviation_Report.xlsx");
+        XLSX.utils.book_append_sheet(wb, ws, "Reports");
+        XLSX.writeFile(wb, "PJP_Deviation_Report_Jan26.xlsx");
     }
 
     init();
