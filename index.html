@@ -10,36 +10,40 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     
     <style>
-        :root { --primary: #1a252f; --accent: #27ae60; --bg: #f4f7f6; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; display: flex; height: 100vh; background: var(--bg); }
+        :root { --primary: #1a252f; --accent: #27ae60; --bg: #f4f7f6; --error: #e74c3c; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; height: 100vh; background: var(--bg); color: #333; }
         
-        /* Sidebar Styles */
+        /* Sidebar */
         #sidebar { width: 320px; background: var(--primary); color: white; padding: 25px; overflow-y: auto; box-shadow: 2px 0 5px rgba(0,0,0,0.1); }
         .plan-card { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid var(--accent); }
         
-        /* Main Content Styles */
+        /* Main Content */
         #main-content { flex-grow: 1; padding: 40px; overflow-y: auto; position: relative; }
         .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
         
         .admin-btn { position: absolute; top: 20px; right: 20px; background: #95a5a6; color: white; border: none; padding: 10px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; }
         .hidden { display: none; }
         
-        /* Form Elements */
-        select, input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
-        button.submit-btn { width: 100%; background: var(--accent); color: white; border: none; padding: 15px; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 20px; }
-        button.submit-btn:hover { background: #219150; }
+        select, input[type="text"], input[type="date"] { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; box-sizing: border-box; }
+        
+        .submit-btn { width: 100%; background: var(--accent); color: white; border: none; padding: 15px; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        .submit-btn:hover { background: #219150; }
+
+        /* Manual Entry Toggle */
+        .manual-box { background: #fdf9e1; padding: 15px; border-radius: 6px; border: 1px solid #f1c40f; margin-top: 15px; }
+        .checkbox-row { display: flex; align-items: center; gap: 10px; cursor: pointer; margin: 10px 0; font-weight: bold; }
 
         /* Admin Table */
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { border: 1px solid #eee; padding: 12px; text-align: left; }
-        th { background: #f8f9fa; color: #333; }
-        .deviation-row { background-color: #fff5f5; color: #e74c3c; font-weight: bold; }
+        th { background: #f8f9fa; }
+        .deviation-row { background-color: #fff5f5; color: var(--error); font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div id="sidebar">
-    <h2 style="margin-top:0">PJP Plan View</h2>
+    <h2 style="margin-top:0">Today's PJP Plan</h2>
     <p id="planMeta" style="color: #bdc3c7; font-size: 0.9em;">Select TL and Date to view plan...</p>
     <div id="planList"></div>
 </div>
@@ -48,20 +52,35 @@
     <button class="admin-btn" onclick="adminLogin()">Admin Login</button>
 
     <div id="tlSection" class="container">
-        <h1 style="margin-top:0; color: #2c3e50;">Visit Reporting</h1>
+        <h1 style="margin-top:0; color: #2c3e50;">Visit Reporting Entry</h1>
         
-        <label>Select Your Name:</label>
+        <label><b>Select Your Name:</b></label>
         <select id="tlName" onchange="loadPlan()"></select>
         
-        <label>Select Date:</label>
+        <label><b>Select Date:</b></label>
         <input type="date" id="visitDate" onchange="loadPlan()">
         
         <div id="entryForm" class="hidden">
             <hr style="margin: 25px 0; border: 0; border-top: 1px solid #eee;">
-            <label><b>Search Visited Outlet:</b></label>
-            <div style="margin-top:10px;">
-                <select id="storeDropdown"></select>
+            
+            <div id="dropdownContainer">
+                <label><b>Search & Select Outlet:</b></label>
+                <div style="margin-top:10px;">
+                    <select id="storeDropdown"></select>
+                </div>
             </div>
+
+            <div id="manualContainer" class="hidden manual-box">
+                <label><b>Type Store/Outlet Name Manually:</b></label>
+                <input type="text" id="manualStoreName" placeholder="Type Store Name and Location here...">
+                <small>Note: Manual entries are flagged as deviations for verification.</small>
+            </div>
+
+            <label class="checkbox-row">
+                <input type="checkbox" id="manualToggle" onchange="toggleManualEntry()" style="width:20px; height:20px;">
+                <span>Outlet not in list? Type manually</span>
+            </label>
+
             <button class="submit-btn" onclick="submitVisit()">Submit Daily Visit</button>
         </div>
     </div>
@@ -69,10 +88,10 @@
     <div id="adminSection" class="container hidden" style="max-width: 1000px;">
         <h1 style="color: #2c3e50;">Admin Dashboard</h1>
         <div style="display: flex; gap: 15px; margin-bottom: 20px;">
-            <button onclick="downloadExcel()" style="background: #3498db; padding: 10px 20px; color:white; border:none; border-radius:4px; cursor:pointer;">Download Excel Report</button>
+            <button onclick="downloadExcel()" style="background: #3498db; padding: 10px 20px; color:white; border:none; border-radius:4px; cursor:pointer;">Download Report (Excel)</button>
             <button onclick="location.reload()" style="background: #95a5a6; padding: 10px 20px; color:white; border:none; border-radius:4px; cursor:pointer;">Logout</button>
         </div>
-        <h3 id="devCountDisplay" style="color: #e74c3c;"></h3>
+        <h3 id="devCountDisplay" style="color: var(--error);"></h3>
         
         <div style="overflow-x: auto;">
             <table>
@@ -82,6 +101,7 @@
                         <th>Date</th>
                         <th>Visited Outlet</th>
                         <th>Status</th>
+                        <th>Entry Mode</th>
                     </tr>
                 </thead>
                 <tbody id="adminTableBody"></tbody>
@@ -91,7 +111,7 @@
 </div>
 
 <script>
-    // REPLACE THESE WITH YOUR ACTUAL SUPABASE KEYS
+    // --- CONFIGURATION ---
     const SB_URL = 'https://rtodwltrkammqzrpufds.supabase.co'; 
     const SB_KEY = 'sb_publishable_BIlXBBrujH3VtyvGy_XPlQ_CZl7GXx7';
     const sb = supabase.createClient(SB_URL, SB_KEY);
@@ -99,17 +119,17 @@
     let storeSearch;
     let plannedStores = [];
 
-    // Initialize App
+    // --- INITIALIZE APP ---
     async function init() {
         try {
-            // 1. Get TL Names
+            // Fetch TL Names
             const { data: tls } = await sb.from('pjp_master').select('tl_name');
             const uniqueNames = [...new Set(tls.map(t => t.tl_name))];
             const tlSelect = document.getElementById('tlName');
-            tlSelect.innerHTML = '<option value="">-- Click to Select --</option>';
+            tlSelect.innerHTML = '<option value="">-- Click to Select Name --</option>';
             uniqueNames.forEach(n => tlSelect.innerHTML += `<option value="${n}">${n}</option>`);
 
-            // 2. Get All Stores for Dropdown
+            // Fetch Stores for Dropdown
             const { data: stores } = await sb.from('pjp_master').select('store_name, location');
             const storeSelect = document.getElementById('storeDropdown');
             stores.forEach(s => {
@@ -119,17 +139,30 @@
                 storeSelect.appendChild(opt);
             });
             
+            // Choices.js Search Settings
             storeSearch = new Choices(storeSelect, {
                 searchEnabled: true,
-                placeholderValue: 'Start typing store name...',
-                itemSelectText: ''
+                placeholderValue: 'Type to search stores...',
+                itemSelectText: '',
+                searchResultLimit: 1000, // Increased to show all matches
+                renderChoiceLimit: 1000  // Increased to show all matches
             });
-        } catch (err) {
-            console.error("Initialization Error:", err);
+        } catch (err) { console.error("Initialization Error:", err); }
+    }
+
+    // --- MANUAL ENTRY TOGGLE ---
+    function toggleManualEntry() {
+        const isManual = document.getElementById('manualToggle').checked;
+        if(isManual) {
+            document.getElementById('dropdownContainer').classList.add('hidden');
+            document.getElementById('manualContainer').classList.remove('hidden');
+        } else {
+            document.getElementById('dropdownContainer').classList.remove('hidden');
+            document.getElementById('manualContainer').classList.add('hidden');
         }
     }
 
-    // Load PJP for Left Sidebar
+    // --- LOAD PJP FOR SIDEBAR ---
     async function loadPlan() {
         const name = document.getElementById('tlName').value;
         const date = document.getElementById('visitDate').value;
@@ -154,13 +187,15 @@
         }
     }
 
-    // Submit Report
+    // --- SUBMIT VISIT ---
     async function submitVisit() {
         const name = document.getElementById('tlName').value;
         const date = document.getElementById('visitDate').value;
-        const actual = document.getElementById('storeDropdown').value;
+        const isManual = document.getElementById('manualToggle').checked;
         
-        if(!actual) return alert("Please select a store first");
+        const actual = isManual ? document.getElementById('manualStoreName').value : document.getElementById('storeDropdown').value;
+        
+        if(!actual) return alert("Please provide a store name.");
 
         // Deviation Check
         const isDev = !plannedStores.includes(actual);
@@ -169,24 +204,27 @@
             tl_name: name,
             visit_date: date,
             actual_store: actual,
-            is_deviation: isDev
+            is_deviation: isDev,
+            entry_type: isManual ? 'Manual' : 'System List'
         }]);
 
         if(!error) {
-            alert(isDev ? "⚠️ REPORTED: This visit is a DEVIATION from your plan." : "✅ SUCCESS: Visit matches plan.");
-            location.reload(); // Refresh to clear form
+            alert(isDev ? "REPORTED: This visit is a DEVIATION from plan." : "SUCCESS: Visit matches plan.");
+            location.reload();
         } else {
-            alert("Error: " + error.message);
+            alert("Submission Error: " + error.message);
         }
     }
 
-    // Admin Dashboard Logic
+    // --- ADMIN DASHBOARD ---
     function adminLogin() {
         const pass = prompt("Admin Password:");
         if(pass === "admin123") {
             document.getElementById('tlSection').classList.add('hidden');
             document.getElementById('adminSection').classList.remove('hidden');
             fetchAdminData();
+        } else {
+            alert("Incorrect Password");
         }
     }
 
@@ -200,19 +238,25 @@
             if(r.is_deviation) devs++;
             const tr = document.createElement('tr');
             if(r.is_deviation) tr.className = "deviation-row";
-            tr.innerHTML = `<td>${r.tl_name}</td><td>${r.visit_date}</td><td>${r.actual_store}</td><td>${r.is_deviation ? '❌ DEVIATION' : '✅ MATCH'}</td>`;
+            tr.innerHTML = `
+                <td>${r.tl_name}</td>
+                <td>${r.visit_date}</td>
+                <td>${r.actual_store}</td>
+                <td>${r.is_deviation ? '❌ DEVIATION' : '✅ MATCH'}</td>
+                <td><small>${r.entry_type || 'System'}</small></td>
+            `;
             tbody.appendChild(tr);
         });
         
         document.getElementById('devCountDisplay').innerText = `Total Deviations Recorded: ${devs}`;
-        window.reportsForExport = data;
+        window.reportsData = data;
     }
 
     function downloadExcel() {
-        const ws = XLSX.utils.json_to_sheet(window.reportsForExport);
+        const ws = XLSX.utils.json_to_sheet(window.reportsData);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Reports");
-        XLSX.writeFile(wb, "PJP_Deviation_Report_Jan26.xlsx");
+        XLSX.utils.book_append_sheet(wb, ws, "PJP Reports");
+        XLSX.writeFile(wb, "PJP_Visit_Report.xlsx");
     }
 
     init();
