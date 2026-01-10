@@ -11,36 +11,26 @@
     
     <style>
         :root { --primary: #1a252f; --accent: #27ae60; --bg: #f4f7f6; --error: #e74c3c; }
-        
         body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: row; min-height: 100vh; background: var(--bg); }
-
         #sidebar { width: 320px; background: var(--primary); color: white; padding: 25px; overflow-y: auto; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; }
         #main-content { flex-grow: 1; padding: 20px; overflow-y: auto; position: relative; width: 100%; }
-        
         .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-
         .plan-card { background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid var(--accent); }
         .slot-tag { font-size: 0.75em; color: #27ae60; text-transform: uppercase; font-weight: bold; margin-bottom: 4px; display: block; }
         .admin-btn { position: absolute; top: 10px; right: 10px; background: #95a5a6; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; z-index: 100; }
         .hidden { display: none; }
-        
-        /* Visit Row adjustments for Manual Entry */
         .visit-row { display: grid; grid-template-columns: 35px 1fr; gap: 10px; align-items: start; padding: 15px 0; border-bottom: 1px solid #eee; }
         .visit-num { font-weight: bold; color: #7f8c8d; padding-top: 12px; text-align: center; }
         .entry-container { display: flex; flex-direction: column; gap: 5px; }
         .manual-toggle { font-size: 11px; color: #3498db; cursor: pointer; text-decoration: underline; width: fit-content; }
-        
         select, input[type="date"], .manual-input { padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; width: 100%; box-sizing: border-box; }
         .manual-input { background-color: #fff9e6; border-color: #f1c40f; }
         .submit-btn { width: 100%; background: var(--accent); color: white; border: none; padding: 18px; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 20px; }
-
-        /* Admin Controls */
         .filter-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
         .table-wrapper { width: 100%; overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid #eee; }
         table { width: 100%; border-collapse: collapse; min-width: 700px; font-size: 0.85em; }
         th, td { border-bottom: 1px solid #eee; padding: 12px; text-align: left; }
         .deviation-row { background-color: #fff5f5; color: var(--error); font-weight: bold; }
-
         @media (max-width: 768px) {
             body { flex-direction: column; }
             #sidebar { width: 100%; max-height: 250px; }
@@ -81,14 +71,8 @@
     <div id="adminSection" class="container hidden">
         <h1>Admin Dashboard</h1>
         <div class="filter-bar">
-            <div>
-                <label>Filter by TL:</label>
-                <select id="filterTL" onchange="applyFilters()"></select>
-            </div>
-            <div>
-                <label>Filter by Date:</label>
-                <input type="date" id="filterDate" onchange="applyFilters()">
-            </div>
+            <div><label>Filter by TL:</label><select id="filterTL" onchange="applyFilters()"></select></div>
+            <div><label>Filter by Date:</label><input type="date" id="filterDate" onchange="applyFilters()"></div>
         </div>
         <div style="display: flex; gap: 10px; margin-bottom: 15px;">
             <button onclick="downloadExcel()" style="background: #3498db; color:white; padding:12px; border:none; border-radius:6px; cursor:pointer; flex:2;">Download Filtered Excel</button>
@@ -98,7 +82,7 @@
         <div class="table-wrapper">
             <table id="adminTable">
                 <thead>
-                    <tr><th>TL Name</th><th>Date</th><th>Slot</th><th>Planned</th><th>Actual</th><th>Status</th></tr>
+                    <tr><th>TL Name</th><th>Date</th><th>Entry #</th><th>Actual Store Visited</th><th>Status</th></tr>
                 </thead>
                 <tbody id="adminTableBody"></tbody>
             </table>
@@ -112,7 +96,7 @@
     const sb = supabase.createClient(SB_URL, SB_KEY);
 
     let masterStoreList = [];
-    let currentPlannedObjects = [];
+    let dailyPlanStrings = []; // Stores stores planned for current selection
     let allReports = [];
     let allPlans = [];
 
@@ -153,7 +137,6 @@
                 </div>
             `;
             container.appendChild(row);
-
             const selectEl = document.getElementById(`v_${i}`);
             masterStoreList.forEach(s => {
                 const opt = document.createElement('option');
@@ -169,19 +152,11 @@
         const selectWrap = document.getElementById(`wrapper_select_${id}`);
         const manualInput = document.getElementById(`manual_v_${id}`);
         const toggleBtn = document.getElementById(`toggle_${id}`);
-
-        if (manualInput.classList.contains('hidden')) {
-            manualInput.classList.remove('hidden');
-            selectWrap.classList.add('hidden');
-            toggleBtn.innerText = "Switch back to list";
-            toggleBtn.style.color = "#e74c3c";
-        } else {
-            manualInput.classList.add('hidden');
-            selectWrap.classList.remove('hidden');
-            toggleBtn.innerText = "Store not listed? Enter manually";
-            toggleBtn.style.color = "#3498db";
-            manualInput.value = ""; // Clear manual if switched back
-        }
+        const isHidden = manualInput.classList.contains('hidden');
+        manualInput.classList.toggle('hidden', !isHidden);
+        selectWrap.classList.toggle('hidden', isHidden);
+        toggleBtn.innerText = isHidden ? "Switch back to list" : "Store not listed? Enter manually";
+        toggleBtn.style.color = isHidden ? "#e74c3c" : "#3498db";
     }
 
     async function loadPlan() {
@@ -189,11 +164,14 @@
         const date = document.getElementById('visitDate').value;
         if(!name || !date) return;
         const { data } = await sb.from('pjp_master').select('*').eq('tl_name', name).eq('visit_date', date);
-        currentPlannedObjects = data;
+        
+        // Store strings of planned stores for flexible validation
+        dailyPlanStrings = data.map(p => `${p.store_name} | ${p.location}`);
+        
         const listDiv = document.getElementById('planList');
         listDiv.innerHTML = data.length > 0 ? "" : "<p>No plan found.</p>";
         data.forEach((p, idx) => {
-            listDiv.innerHTML += `<div class="plan-card"><span class="slot-tag">Slot ${idx + 1}</span><b>${p.store_name}</b><br><small>${p.location}</small></div>`;
+            listDiv.innerHTML += `<div class="plan-card"><span class="slot-tag">Planned Store</span><b>${p.store_name}</b><br><small>${p.location}</small></div>`;
         });
         document.getElementById('bulkEntryForm').classList.toggle('hidden', data.length === 0);
     }
@@ -204,19 +182,18 @@
         const entries = [];
 
         for(let i = 1; i <= 10; i++) {
+            const manualInp = document.getElementById(`manual_v_${i}`);
             const selectVal = document.getElementById(`v_${i}`).value;
-            const manualVal = document.getElementById(`manual_v_${i}`).value;
-            // Use manual value if it's visible and not empty, otherwise use select value
-            const finalVal = (!document.getElementById(`manual_v_${i}`).classList.contains('hidden') && manualVal) ? manualVal : selectVal;
+            const finalVal = (!manualInp.classList.contains('hidden') && manualInp.value) ? manualInp.value : selectVal;
 
             if(finalVal) {
-                const plan = currentPlannedObjects[i-1];
-                const planStr = plan ? `${plan.store_name} | ${plan.location}` : "No Plan";
+                // Check if finalVal exists anywhere in the day's plan
+                const isMatch = dailyPlanStrings.includes(finalVal);
                 entries.push({ 
                     tl_name: name, 
                     visit_date: date, 
                     actual_store: finalVal, 
-                    is_deviation: (finalVal !== planStr), 
+                    is_deviation: !isMatch, 
                     visit_order: i 
                 });
             }
@@ -233,8 +210,7 @@
             document.getElementById('tlSection').classList.add('hidden');
             document.getElementById('adminSection').classList.remove('hidden');
             const { data: r } = await sb.from('daily_reports').select('*').order('visit_date', { ascending: false });
-            const { data: p } = await sb.from('pjp_master').select('*');
-            allReports = r; allPlans = p;
+            allReports = r;
             applyFilters();
         }
     }
@@ -252,15 +228,12 @@
         let devs = 0;
         window.currentExport = [];
         data.forEach(r => {
-            const dayPlans = allPlans.filter(p => p.tl_name === r.tl_name && p.visit_date === r.visit_date);
-            const specificPlan = dayPlans[r.visit_order - 1]; 
-            const planText = specificPlan ? `${specificPlan.store_name} | ${specificPlan.location}` : "Unplanned";
             if(r.is_deviation) devs++;
             const tr = document.createElement('tr');
             if(r.is_deviation) tr.className = "deviation-row";
-            tr.innerHTML = `<td>${r.tl_name}</td><td>${r.visit_date}</td><td>${r.visit_order}</td><td>${planText}</td><td>${r.actual_store}</td><td>${r.is_deviation ? '❌' : '✅'}</td>`;
+            tr.innerHTML = `<td>${r.tl_name}</td><td>${r.visit_date}</td><td>${r.visit_order}</td><td>${r.actual_store}</td><td>${r.is_deviation ? '❌ Deviation' : '✅ Match'}</td>`;
             tbody.appendChild(tr);
-            window.currentExport.push({ "TL": r.tl_name, "Date": r.visit_date, "Slot": r.visit_order, "Planned": planText, "Actual": r.actual_store, "Result": r.is_deviation ? "Deviation" : "Match" });
+            window.currentExport.push({ "TL": r.tl_name, "Date": r.visit_date, "Entry #": r.visit_order, "Actual Store": r.actual_store, "Result": r.is_deviation ? "Deviation" : "Match" });
         });
         document.getElementById('devCountDisplay').innerText = `Total Records: ${data.length} | Deviations: ${devs}`;
     }
@@ -270,7 +243,7 @@
         const ws = XLSX.utils.json_to_sheet(window.currentExport);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Report");
-        XLSX.writeFile(wb, `PJP_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+        XLSX.writeFile(wb, `PJP_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
     }
 
     init();
