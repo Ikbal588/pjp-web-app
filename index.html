@@ -32,11 +32,10 @@
         .submit-btn { width: 100%; background: var(--accent); color: white; border: none; padding: 18px; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 30px; }
 
         /* Admin Table */
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { border: 1px solid #eee; padding: 12px; text-align: left; }
-        th { background: #f8f9fa; }
         .deviation-row { background-color: #fff5f5; color: var(--error); font-weight: bold; }
-        .plan-cell { color: #666; font-size: 0.85em; }
+        .planned-col { color: #555; font-style: italic; font-size: 0.9em; }
     </style>
 </head>
 <body>
@@ -67,12 +66,14 @@
         <div id="bulkEntryForm" class="hidden">
             <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
             <p>Select all outlets visited today (leave empty if no visit):</p>
+            
             <div id="rowsContainer"></div>
+
             <button class="submit-btn" onclick="submitAllVisits()">Save All Visits</button>
         </div>
     </div>
 
-    <div id="adminSection" class="container hidden">
+    <div id="adminSection" class="container hidden" style="max-width: 1000px;">
         <h1>Admin Dashboard</h1>
         <div style="display: flex; gap: 15px; margin-bottom: 20px;">
             <button onclick="downloadExcel()" style="background: #3498db; color:white; padding:10px 20px; border:none; border-radius:4px; cursor:pointer;">Download Excel</button>
@@ -84,8 +85,8 @@
                 <tr>
                     <th>TL Name</th>
                     <th>Date</th>
-                    <th>Planned Outlet(s)</th>
-                    <th>Visited Outlet</th>
+                    <th>Planned Store</th>
+                    <th>Actual Visit</th>
                     <th>Result</th>
                 </tr>
             </thead>
@@ -95,7 +96,6 @@
 </div>
 
 <script>
-    // --- 1. CONFIGURATION ---
     const SB_URL = 'https://rtodwltrkammqzrpufds.supabase.co'; 
     const SB_KEY = 'sb_publishable_BIlXBBrujH3VtyvGy_XPlQ_CZl7GXx7';
     const sb = supabase.createClient(SB_URL, SB_KEY);
@@ -104,17 +104,17 @@
     let plannedStoresList = [];
     let choiceInstances = [];
 
-    // --- 2. INITIALIZE ---
     async function init() {
         try {
             const { data: tls } = await sb.from('pjp_master').select('tl_name');
-            const uniqueNames = [...new Set(tls.map(t => t.tl_name))].sort();
+            const uniqueNames = [...new Set(tls.map(t => t.tl_name))];
             const tlSelect = document.getElementById('tlName');
             tlSelect.innerHTML = '<option value="">-- Select Name --</option>';
             uniqueNames.forEach(n => tlSelect.innerHTML += `<option value="${n}">${n}</option>`);
 
             const { data: stores } = await sb.from('pjp_master').select('store_name, location');
             masterStoreList = stores;
+            
             generateRows();
         } catch (err) { console.error("Init Error:", err); }
     }
@@ -122,23 +122,34 @@
     function generateRows() {
         const container = document.getElementById('rowsContainer');
         container.innerHTML = "";
-        const uniqueStores = [...new Map(masterStoreList.map(item => [item.store_name, item])).values()];
-        
         for (let i = 1; i <= 10; i++) {
             const row = document.createElement('div');
             row.className = 'visit-row';
-            row.innerHTML = `<div class="visit-num">${i}</div><select id="v_${i}" class="store-select"><option value="">-- Select Outlet --</option></select>`;
+            row.innerHTML = `
+                <div class="visit-num">${i}</div>
+                <select id="v_${i}" class="store-select">
+                    <option value="">-- Select Outlet --</option>
+                </select>
+            `;
             container.appendChild(row);
 
             const selectEl = document.getElementById(`v_${i}`);
-            uniqueStores.forEach(s => {
+            masterStoreList.forEach(s => {
                 const opt = document.createElement('option');
-                opt.value = s.store_name;
-                opt.text = `${s.store_name} | ${s.location}`;
+                // We keep both name and location in the value so the comparison works correctly
+                const fullName = `${s.store_name} | ${s.location}`;
+                opt.value = fullName; 
+                opt.text = fullName;
                 selectEl.appendChild(opt);
             });
 
-            choiceInstances.push(new Choices(selectEl, { searchEnabled: true, itemSelectText: '', placeholder: true }));
+            const choice = new Choices(selectEl, {
+                searchEnabled: true,
+                searchResultLimit: 1000,
+                itemSelectText: '',
+                placeholder: true
+            });
+            choiceInstances.push(choice);
         }
     }
 
@@ -148,7 +159,8 @@
         if(!name || !date) return;
 
         const { data } = await sb.from('pjp_master').select('*').eq('tl_name', name).eq('visit_date', date);
-        plannedStoresList = data.map(d => d.store_name);
+        // Store full strings for comparison
+        plannedStoresList = data.map(d => `${d.store_name} | ${d.location}`);
         
         const listDiv = document.getElementById('planList');
         listDiv.innerHTML = "";
@@ -203,30 +215,27 @@
     }
 
     async function fetchAdminData() {
-        // Fetch actual reports
+        // 1. Fetch reported visits
         const { data: reports } = await sb.from('daily_reports').select('*').order('visit_date', { ascending: false });
-        // Fetch all plans to correlate
-        const { data: allPlans } = await sb.from('pjp_master').select('tl_name, visit_date, store_name');
+        // 2. Fetch master plan to correlate
+        const { data: plans } = await sb.from('pjp_master').select('tl_name, visit_date, store_name, location');
 
         const tbody = document.getElementById('adminTableBody');
         tbody.innerHTML = "";
         let devs = 0;
 
         reports.forEach(r => {
-            if(r.is_deviation) devs++;
-            
-            // Find what stores were planned for this specific person on this specific date
-            const plannedForThisDay = allPlans
-                .filter(p => p.tl_name === r.tl_name && p.visit_date === r.visit_date)
-                .map(p => p.store_name)
-                .join(", ");
+            // Find the planned store(s) for this TL on this date
+            const dayPlan = plans.filter(p => p.tl_name === r.tl_name && p.visit_date === r.visit_date);
+            const plannedStr = dayPlan.map(p => `${p.store_name} | ${p.location}`).join(", ");
 
+            if(r.is_deviation) devs++;
             const tr = document.createElement('tr');
             if(r.is_deviation) tr.className = "deviation-row";
             tr.innerHTML = `
                 <td>${r.tl_name}</td>
                 <td>${r.visit_date}</td>
-                <td class="plan-cell">${plannedForThisDay || '<i>No plan found</i>'}</td>
+                <td class="planned-col">${plannedStr || 'No Plan'}</td>
                 <td>${r.actual_store}</td>
                 <td>${r.is_deviation ? '❌ Deviation' : '✅ Match'}</td>
             `;
@@ -240,7 +249,7 @@
         const ws = XLSX.utils.json_to_sheet(window.reportsData);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Reports");
-        XLSX.writeFile(wb, "PJP_Report_2026.xlsx");
+        XLSX.writeFile(wb, "PJP_Report_Jan2026.xlsx");
     }
 
     init();
