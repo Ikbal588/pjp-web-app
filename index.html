@@ -31,7 +31,7 @@
         table { width: 100%; border-collapse: collapse; min-width: 1000px; font-size: 0.85em; }
         th, td { border-bottom: 1px solid #eee; padding: 12px; text-align: left; }
         .deviation-row { background-color: #fff5f5; color: var(--error); font-weight: bold; }
-        .planned-ref-cell { font-size: 0.85em; color: #555; font-style: italic; background: #fdfdfd; }
+        .planned-ref-cell { font-size: 0.85em; color: #555; background: #fdfdfd; }
         @media (max-width: 768px) {
             body { flex-direction: column; }
             #sidebar { width: 100%; max-height: 250px; }
@@ -189,7 +189,6 @@
             const selectVal = document.getElementById(`v_${i}`).value;
             const finalVal = (!manualInp.classList.contains('hidden') && manualInp.value) ? manualInp.value : selectVal;
             if(finalVal) {
-                // Determine deviation at submission time based on daily plan
                 const isMatch = dailyPlanStrings.includes(finalVal);
                 entries.push({ tl_name: name, visit_date: date, actual_store: finalVal, is_deviation: !isMatch, visit_order: i });
             }
@@ -225,12 +224,13 @@
         window.currentExport = [];
 
         data.forEach(r => {
-            // Get all stores planned for THIS TL on THIS Date
+            // Get the specific plan for this TL and Date
             const dailyPlans = allPlans.filter(p => p.tl_name === r.tl_name && p.visit_date === r.visit_date);
-            const planListString = dailyPlans.map(p => p.store_name).join(", ") || "No Plan Found";
             
-            // Validation: Does the Actual Store exist ANYWHERE in the daily plan list?
-            // (Uses the logic: if is_deviation was saved as true, it's a deviation)
+            // Logic: Pick the store that matches the entry index (Entry #)
+            // Note: r.visit_order is 1-indexed (1, 2, 3...)
+            const specificPlannedStore = dailyPlans[r.visit_order - 1] ? dailyPlans[r.visit_order - 1].store_name : "No Plan for Entry #" + r.visit_order;
+            
             if(r.is_deviation) devs++;
             
             const tr = document.createElement('tr');
@@ -240,7 +240,7 @@
                 <td>${r.tl_name}</td>
                 <td>${r.visit_date}</td>
                 <td>${r.visit_order}</td>
-                <td class="planned-ref-cell">${planListString}</td>
+                <td class="planned-ref-cell">${specificPlannedStore}</td>
                 <td>${r.actual_store}</td>
                 <td>${r.is_deviation ? '❌ Deviation' : '✅ Match'}</td>
             `;
@@ -248,7 +248,7 @@
 
             window.currentExport.push({ 
                 "TL Name": r.tl_name, "Date": r.visit_date, "Entry #": r.visit_order, 
-                "Daily Planned Stores": planListString, "Actual Store": r.actual_store, 
+                "Daily Planned Stores": specificPlannedStore, "Actual Store": r.actual_store, 
                 "Status": r.is_deviation ? "Deviation" : "Match" 
             });
         });
