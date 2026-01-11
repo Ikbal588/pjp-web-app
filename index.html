@@ -152,7 +152,21 @@
                 opt.text = `${s.store_name} | ${s.location}`;
                 selectEl.appendChild(opt);
             });
-            new Choices(selectEl, { searchEnabled: true, itemSelectText: '', placeholder: true, position: 'bottom' });
+            
+            // Updated Choices.js config to allow searching by location (partial matching)
+            new Choices(selectEl, { 
+                searchEnabled: true, 
+                itemSelectText: '', 
+                placeholder: true, 
+                position: 'bottom',
+                searchFloor: 1,
+                searchChoices: true,
+                shouldSort: false,
+                fuseOptions: {
+                    threshold: 0.2, // Lower threshold means stricter matching but better for finding specific words
+                    distance: 100
+                }
+            });
         }
     }
 
@@ -226,7 +240,6 @@
         data.forEach(r => {
             const dailyPlans = allPlans.filter(p => p.tl_name === r.tl_name && p.visit_date === r.visit_date);
             
-            // COMBINED STORE NAME + LOCATION logic here
             let specificPlannedStore = "No Plan for Entry #" + r.visit_order;
             if (dailyPlans[r.visit_order - 1]) {
                 const plan = dailyPlans[r.visit_order - 1];
