@@ -224,12 +224,14 @@
         window.currentExport = [];
 
         data.forEach(r => {
-            // Get the specific plan for this TL and Date
             const dailyPlans = allPlans.filter(p => p.tl_name === r.tl_name && p.visit_date === r.visit_date);
             
-            // Logic: Pick the store that matches the entry index (Entry #)
-            // Note: r.visit_order is 1-indexed (1, 2, 3...)
-            const specificPlannedStore = dailyPlans[r.visit_order - 1] ? dailyPlans[r.visit_order - 1].store_name : "No Plan for Entry #" + r.visit_order;
+            // COMBINED STORE NAME + LOCATION logic here
+            let specificPlannedStore = "No Plan for Entry #" + r.visit_order;
+            if (dailyPlans[r.visit_order - 1]) {
+                const plan = dailyPlans[r.visit_order - 1];
+                specificPlannedStore = `${plan.store_name} | ${plan.location}`;
+            }
             
             if(r.is_deviation) devs++;
             
