@@ -14,7 +14,7 @@
         body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: row; min-height: 100vh; background: var(--bg); }
         #sidebar { width: 320px; background: var(--primary); color: white; padding: 25px; overflow-y: auto; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; }
         #main-content { flex-grow: 1; padding: 20px; overflow-y: auto; position: relative; width: 100%; }
-        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        .container { max-width: 1100px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
         .plan-card { background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid var(--accent); }
         .slot-tag { font-size: 0.75em; color: #27ae60; text-transform: uppercase; font-weight: bold; margin-bottom: 4px; display: block; }
         .admin-btn { position: absolute; top: 10px; right: 10px; background: #95a5a6; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; z-index: 100; }
@@ -28,9 +28,10 @@
         .submit-btn { width: 100%; background: var(--accent); color: white; border: none; padding: 18px; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 20px; }
         .filter-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
         .table-wrapper { width: 100%; overflow-x: auto; margin-top: 10px; border-radius: 8px; border: 1px solid #eee; }
-        table { width: 100%; border-collapse: collapse; min-width: 700px; font-size: 0.85em; }
+        table { width: 100%; border-collapse: collapse; min-width: 900px; font-size: 0.85em; }
         th, td { border-bottom: 1px solid #eee; padding: 12px; text-align: left; }
         .deviation-row { background-color: #fff5f5; color: var(--error); font-weight: bold; }
+        .planned-ref-cell { font-size: 0.85em; color: #666; font-style: italic; max-width: 250px; }
         @media (max-width: 768px) {
             body { flex-direction: column; }
             #sidebar { width: 100%; max-height: 250px; }
@@ -82,7 +83,14 @@
         <div class="table-wrapper">
             <table id="adminTable">
                 <thead>
-                    <tr><th>TL Name</th><th>Date</th><th>Entry #</th><th>Actual Store Visited</th><th>Status</th></tr>
+                    <tr>
+                        <th>TL Name</th>
+                        <th>Date</th>
+                        <th>Entry #</th>
+                        <th>Planned Stores (Reference)</th>
+                        <th>Actual Store Visited</th>
+                        <th>Status</th>
+                    </tr>
                 </thead>
                 <tbody id="adminTableBody"></tbody>
             </table>
@@ -96,7 +104,7 @@
     const sb = supabase.createClient(SB_URL, SB_KEY);
 
     let masterStoreList = [];
-    let dailyPlanStrings = []; // Stores stores planned for current selection
+    let dailyPlanStrings = []; 
     let allReports = [];
     let allPlans = [];
 
@@ -165,7 +173,6 @@
         if(!name || !date) return;
         const { data } = await sb.from('pjp_master').select('*').eq('tl_name', name).eq('visit_date', date);
         
-        // Store strings of planned stores for flexible validation
         dailyPlanStrings = data.map(p => `${p.store_name} | ${p.location}`);
         
         const listDiv = document.getElementById('planList');
@@ -187,7 +194,6 @@
             const finalVal = (!manualInp.classList.contains('hidden') && manualInp.value) ? manualInp.value : selectVal;
 
             if(finalVal) {
-                // Check if finalVal exists anywhere in the day's plan
                 const isMatch = dailyPlanStrings.includes(finalVal);
                 entries.push({ 
                     tl_name: name, 
@@ -209,8 +215,13 @@
         if(prompt("Password:") === "admin123") {
             document.getElementById('tlSection').classList.add('hidden');
             document.getElementById('adminSection').classList.remove('hidden');
-            const { data: r } = await sb.from('daily_reports').select('*').order('visit_date', { ascending: false });
-            allReports = r;
+            
+            // Fetch both reports and master plan for comparison
+            const { data: reports } = await sb.from('daily_reports').select('*').order('visit_date', { ascending: false });
+            const { data: plans } = await sb.from('pjp_master').select('*');
+            
+            allReports = reports;
+            allPlans = plans;
             applyFilters();
         }
     }
@@ -227,13 +238,36 @@
         tbody.innerHTML = "";
         let devs = 0;
         window.currentExport = [];
+
         data.forEach(r => {
+            // Find all planned stores for this TL on this Date
+            const plannedForThatDay = allPlans
+                .filter(p => p.tl_name === r.tl_name && p.visit_date === r.visit_date)
+                .map(p => p.store_name)
+                .join(", ");
+
             if(r.is_deviation) devs++;
             const tr = document.createElement('tr');
             if(r.is_deviation) tr.className = "deviation-row";
-            tr.innerHTML = `<td>${r.tl_name}</td><td>${r.visit_date}</td><td>${r.visit_order}</td><td>${r.actual_store}</td><td>${r.is_deviation ? '❌ Deviation' : '✅ Match'}</td>`;
+            
+            tr.innerHTML = `
+                <td>${r.tl_name}</td>
+                <td>${r.visit_date}</td>
+                <td>${r.visit_order}</td>
+                <td class="planned-ref-cell">${plannedForThatDay || 'No Plan Found'}</td>
+                <td>${r.actual_store}</td>
+                <td>${r.is_deviation ? '❌ Deviation' : '✅ Match'}</td>
+            `;
             tbody.appendChild(tr);
-            window.currentExport.push({ "TL": r.tl_name, "Date": r.visit_date, "Entry #": r.visit_order, "Actual Store": r.actual_store, "Result": r.is_deviation ? "Deviation" : "Match" });
+
+            window.currentExport.push({ 
+                "TL Name": r.tl_name, 
+                "Date": r.visit_date, 
+                "Entry #": r.visit_order, 
+                "Planned Stores (Reference)": plannedForThatDay,
+                "Actual Store Visited": r.actual_store, 
+                "Status": r.is_deviation ? "Deviation" : "Match" 
+            });
         });
         document.getElementById('devCountDisplay').innerText = `Total Records: ${data.length} | Deviations: ${devs}`;
     }
@@ -242,8 +276,8 @@
         if(!window.currentExport || window.currentExport.length === 0) return alert("No data to export.");
         const ws = XLSX.utils.json_to_sheet(window.currentExport);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Report");
-        XLSX.writeFile(wb, `PJP_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+        XLSX.utils.book_append_sheet(wb, ws, "PJP Report");
+        XLSX.writeFile(wb, `PJP_Detailed_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
     }
 
     init();
